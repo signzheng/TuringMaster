@@ -67,5 +67,58 @@ export const PRESETS: Preset[] = [
       { currentState: 'left', readSymbol: '0', writeSymbol: '0', moveDirection: 'L', nextState: 'left' },
       { currentState: 'left', readSymbol: '1', writeSymbol: '1', moveDirection: 'R', nextState: 'right' },
     ]
+  },
+  {
+    name: 'Unary Addition',
+    description: 'Adds two unary numbers separated by "+". Example: 11+11 -> 1111',
+    initialTape: '11+111',
+    initialState: 'start',
+    rules: [
+      // Strategy: Change '+' to '1', then remove one '1' from the end to balance the count.
+      { currentState: 'start', readSymbol: '1', writeSymbol: '1', moveDirection: 'R', nextState: 'start' },
+      { currentState: 'start', readSymbol: '+', writeSymbol: '1', moveDirection: 'R', nextState: 'go_end' },
+      
+      { currentState: 'go_end', readSymbol: '1', writeSymbol: '1', moveDirection: 'R', nextState: 'go_end' },
+      { currentState: 'go_end', readSymbol: '_', writeSymbol: '_', moveDirection: 'L', nextState: 'remove_one' },
+      
+      { currentState: 'remove_one', readSymbol: '1', writeSymbol: '_', moveDirection: 'N', nextState: 'done' },
+    ]
+  },
+  {
+    name: 'Unary Subtraction',
+    description: 'Subtracts second number from first. Example: 111-11 -> 1',
+    initialTape: '111-11',
+    initialState: 'start',
+    rules: [
+      // Strategy: Ping pong between right side (subtractor) and left side (minuend), crossing out pairs.
+      
+      // 1. Move Right to find the operator or verify we are done
+      { currentState: 'start', readSymbol: '1', writeSymbol: '1', moveDirection: 'R', nextState: 'start' },
+      { currentState: 'start', readSymbol: '-', writeSymbol: '-', moveDirection: 'R', nextState: 'find_b' },
+      { currentState: 'start', readSymbol: '_', writeSymbol: '_', moveDirection: 'N', nextState: 'done' }, // If empty
+
+      // 2. In section B (right side), find the end
+      { currentState: 'find_b', readSymbol: '1', writeSymbol: '1', moveDirection: 'R', nextState: 'find_b' },
+      { currentState: 'find_b', readSymbol: '_', writeSymbol: '_', moveDirection: 'L', nextState: 'erase_b' },
+      { currentState: 'find_b', readSymbol: 'X', writeSymbol: 'X', moveDirection: 'L', nextState: 'erase_b' },
+
+      // 3. Erase one '1' from B
+      { currentState: 'erase_b', readSymbol: '1', writeSymbol: '_', moveDirection: 'L', nextState: 'find_a_tail' },
+      { currentState: 'erase_b', readSymbol: '-', writeSymbol: '_', moveDirection: 'N', nextState: 'done' }, // B is empty, remove minus and we are DONE.
+
+      // 4. Go back left to find tail of A
+      { currentState: 'find_a_tail', readSymbol: '1', writeSymbol: '1', moveDirection: 'L', nextState: 'find_a_tail' },
+      { currentState: 'find_a_tail', readSymbol: '-', writeSymbol: '-', moveDirection: 'L', nextState: 'erase_a' },
+      { currentState: 'find_a_tail', readSymbol: '_', writeSymbol: '_', moveDirection: 'L', nextState: 'find_a_tail' }, // Skipping gaps
+
+      // 5. Erase one '1' from A
+      { currentState: 'erase_a', readSymbol: '1', writeSymbol: '_', moveDirection: 'R', nextState: 'reset_start' }, // Erased match, restart
+      { currentState: 'erase_a', readSymbol: '_', writeSymbol: '_', moveDirection: 'L', nextState: 'erase_a' }, // Skip gaps
+      
+      // 6. Reset to start scanning again
+      { currentState: 'reset_start', readSymbol: '_', writeSymbol: '_', moveDirection: 'R', nextState: 'reset_start' },
+      { currentState: 'reset_start', readSymbol: '-', writeSymbol: '-', moveDirection: 'R', nextState: 'find_b' },
+      { currentState: 'reset_start', readSymbol: '1', writeSymbol: '1', moveDirection: 'R', nextState: 'reset_start' },
+    ]
   }
 ];

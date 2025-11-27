@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Pause, SkipForward, RotateCcw, Cpu, BrainCircuit, Wand2, Github } from 'lucide-react';
+import { Play, Pause, SkipForward, RotateCcw, Cpu, BrainCircuit, Wand2, Calculator, ScrollText, ArrowRight } from 'lucide-react';
 import { Tape } from './components/Tape';
 import { TransitionTable } from './components/TransitionTable';
 import { Tape as TapeType, TransitionRule, MachineState } from './types';
@@ -18,9 +18,19 @@ const App: React.FC = () => {
   const [initialTapeStr, setInitialTapeStr] = useState('');
   const [initialStateStr, setInitialStateStr] = useState('start');
   
-  const [speed, setSpeed] = useState(500); // ms per step
+  const [speed, setSpeed] = useState(200); // ms per step
   const [activeRuleIndex, setActiveRuleIndex] = useState<number | null>(null);
   
+  // Math Mode State
+  const [mathInputA, setMathInputA] = useState('3');
+  const [mathInputB, setMathInputB] = useState('2');
+  const [mathOp, setMathOp] = useState<'+'|'-'>('+');
+  const [mathResult, setMathResult] = useState<string | null>(null);
+  
+  // Logging
+  const [logs, setLogs] = useState<{step: number, state: string, tapeSnippet: string}[]>([]);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
   // AI Modal State
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
@@ -70,9 +80,16 @@ const App: React.FC = () => {
     setStatus('IDLE');
     setStepCount(0);
     setActiveRuleIndex(null);
+    setLogs([]);
+    setMathResult(null);
   };
 
   const step = useCallback(() => {
+    setTape(prevTape => {
+      // Functional update to access current tape value correctly inside interval
+      return prevTape;
+    });
+
     let currentSym = tape[headPos] || EMPTY_SYMBOL;
     
     // Find matching rule
@@ -80,10 +97,25 @@ const App: React.FC = () => {
       r => r.currentState === currentState && r.readSymbol === currentSym
     );
 
+    // Logging
+    const snippet = getTapeString(tape);
+    setLogs(prev => {
+        const newLog = { step: stepCount + 1, state: currentState, tapeSnippet: snippet };
+        return [...prev.slice(-99), newLog]; // Keep last 100
+    });
+
     if (ruleIndex === -1) {
-      // HALT Condition: No transition defined
+      // HALT Condition
       setStatus('HALTED');
       stopMachine();
+      
+      // If we are in a Halt state, try to decode math result if it looks like unary
+      const finalTapeStr = getTapeString(tape);
+      // Valid result is either empty string (0) or only 1s and _s
+      if (finalTapeStr === '' || finalTapeStr.match(/^[1_]+$/)) { 
+         const count = (finalTapeStr.match(/1/g) || []).length;
+         setMathResult(count.toString());
+      }
       return;
     }
 
@@ -94,7 +126,7 @@ const App: React.FC = () => {
     setTape(prev => {
       const newTape = { ...prev };
       if (rule.writeSymbol === EMPTY_SYMBOL) {
-        delete newTape[headPos]; // Keep dictionary clean
+        delete newTape[headPos]; 
       } else {
         newTape[headPos] = rule.writeSymbol;
       }
@@ -108,16 +140,14 @@ const App: React.FC = () => {
     
     setStepCount(c => c + 1);
 
-  }, [tape, headPos, currentState, rules]);
+  }, [tape, headPos, currentState, rules, stepCount]);
 
   const startMachine = () => {
     if (status === 'HALTED' || status === 'ERROR') {
-      resetMachine();
-      // Need to wait for state update before starting, but for simplicity in React strict mode:
-      // We will just reset. User clicks play again.
-      return;
+      setStatus('RUNNING');
+    } else {
+      setStatus('RUNNING');
     }
-    setStatus('RUNNING');
   };
 
   const stopMachine = () => {
@@ -126,6 +156,40 @@ const App: React.FC = () => {
       workerRef.current = null;
     }
     setStatus(prev => prev === 'RUNNING' ? 'PAUSED' : prev);
+  };
+
+  // --- Math Translator ---
+  const handleMathTranslate = () => {
+    const a = parseInt(mathInputA) || 0;
+    const b = parseInt(mathInputB) || 0;
+    
+    // Generate Unary Strings
+    const unaryA = '1'.repeat(a);
+    const unaryB = '1'.repeat(b);
+    
+    // Create Tape
+    const newTapeStr = `${unaryA}${mathOp}${unaryB}`;
+    
+    // Load Rules
+    const presetName = mathOp === '+' ? 'Unary Addition' : 'Unary Subtraction';
+    const preset = PRESETS.find(p => p.name === presetName);
+    
+    if (preset) {
+        setRules(preset.rules);
+        setInitialTapeStr(newTapeStr);
+        setInitialStateStr(preset.initialState);
+        
+        // Apply immediately
+        stopMachine();
+        setTape(parseTapeString(newTapeStr));
+        setHeadPos(0);
+        setCurrentState(preset.initialState);
+        setStatus('IDLE');
+        setStepCount(0);
+        setActiveRuleIndex(null);
+        setLogs([]);
+        setMathResult(null);
+    }
   };
 
   // --- Effects ---
@@ -139,7 +203,14 @@ const App: React.FC = () => {
     return () => {
       if (workerRef.current) window.clearInterval(workerRef.current);
     };
-  }, [status, speed, step]);
+  }, [status, speed, step]); // Re-bind interval when step function updates (due to tape state change)
+
+  // Auto-scroll logs
+  useEffect(() => {
+      if (logsEndRef.current) {
+          logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+      }
+  }, [logs]);
 
   // --- AI Handler ---
   const handleAiGenerate = async () => {
@@ -210,6 +281,58 @@ const App: React.FC = () => {
         {/* Left Col: Visualization & Controls (7 Cols) */}
         <div className="lg:col-span-7 flex flex-col gap-6">
           
+          {/* Math Laboratory Panel */}
+          <div className="bg-slate-800 rounded-xl border border-indigo-500/30 overflow-hidden shadow-lg">
+            <div className="p-3 bg-indigo-900/20 border-b border-indigo-500/20 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-indigo-300 font-bold text-sm">
+                    <Calculator size={16} />
+                    Math Laboratory
+                </div>
+                {mathResult !== null && (
+                    <div className="flex items-center gap-2 bg-green-500/20 text-green-300 px-3 py-1 rounded-full text-xs font-bold animate-pulse">
+                        Result: {mathResult}
+                    </div>
+                )}
+            </div>
+            <div className="p-4 flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-lg border border-slate-700">
+                    <input 
+                        type="number" 
+                        value={mathInputA}
+                        onChange={(e) => setMathInputA(e.target.value)}
+                        className="w-12 bg-transparent text-center text-white outline-none font-mono font-bold"
+                    />
+                    <select 
+                        value={mathOp}
+                        onChange={(e) => setMathOp(e.target.value as any)}
+                        className="bg-slate-800 text-indigo-400 font-bold rounded px-1 outline-none cursor-pointer"
+                    >
+                        <option value="+">+</option>
+                        <option value="-">-</option>
+                    </select>
+                    <input 
+                        type="number" 
+                        value={mathInputB}
+                        onChange={(e) => setMathInputB(e.target.value)}
+                        className="w-12 bg-transparent text-center text-white outline-none font-mono font-bold"
+                    />
+                </div>
+                
+                <ArrowRight size={16} className="text-slate-500" />
+                
+                <div className="text-xs font-mono text-slate-400 bg-slate-900/50 px-2 py-1 rounded border border-slate-700/50">
+                   TM Input: <span className="text-indigo-300">{'1'.repeat(parseInt(mathInputA)||0)}{mathOp}{'1'.repeat(parseInt(mathInputB)||0)}</span>
+                </div>
+
+                <button 
+                    onClick={handleMathTranslate}
+                    className="ml-auto px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded transition-colors"
+                >
+                    Load & Translate
+                </button>
+            </div>
+          </div>
+
           {/* Status Bar */}
           <div className="flex justify-between items-center bg-slate-800/50 p-4 rounded-xl border border-slate-700">
             <div className="flex gap-6">
@@ -309,9 +432,22 @@ const App: React.FC = () => {
              </div>
           </div>
           
-          <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-800 text-sm text-slate-400">
-             <h4 className="font-bold text-slate-300 mb-2">How it works</h4>
-             <p>This is a deterministic Turing machine. It reads the symbol under the head, looks up a rule for the <code>(Current State, Symbol)</code> pair, writes a new symbol, moves the head, and transitions to a new state. If no rule is found, the machine <strong>HALTS</strong>.</p>
+          {/* Logs */}
+          <div className="bg-slate-900/50 rounded-lg border border-slate-800 text-sm overflow-hidden flex flex-col h-48">
+              <div className="bg-slate-800 px-4 py-2 text-xs font-bold text-slate-400 flex items-center gap-2">
+                 <ScrollText size={12} /> Execution Log
+              </div>
+              <div className="overflow-y-auto p-2 font-mono text-xs space-y-1 custom-scrollbar flex-1">
+                 {logs.length === 0 && <span className="text-slate-600 italic">Ready to compute...</span>}
+                 {logs.map((log, i) => (
+                     <div key={i} className="flex gap-4 text-slate-400 border-b border-slate-800/50 pb-1">
+                         <span className="w-8 text-slate-600">#{log.step}</span>
+                         <span className="w-20 text-indigo-400">{log.state}</span>
+                         <span className="text-slate-300 truncate">{log.tapeSnippet}</span>
+                     </div>
+                 ))}
+                 <div ref={logsEndRef} />
+              </div>
           </div>
 
         </div>
