@@ -1,0 +1,5 @@
+{
+  "name": "Turing Master",
+  "description": "A dynamic, visual Turing Machine simulator. Create algorithms, visualize execution step-by-step, or use Gemini AI to generate transition rules for complex tasks.",
+  "requestFramePermissions": []
+}
