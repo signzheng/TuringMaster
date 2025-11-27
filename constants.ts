@@ -5,7 +5,7 @@ export const EMPTY_SYMBOL = '_';
 export const PRESETS: Preset[] = [
   {
     name: 'Binary Increment',
-    description: 'Adds 1 to a binary number (Big Endian). Example: 1011 -> 1100',
+    description: 'Adds 1 to a binary number (Big Endian). It moves to the rightmost bit, then handles carries moving left.',
     initialTape: '1011',
     initialState: 'start',
     rules: [
@@ -19,7 +19,7 @@ export const PRESETS: Preset[] = [
   },
   {
     name: 'Palindrome Detector',
-    description: 'Checks if a binary string is a palindrome. Clears tape if true, leaves 0 if false.',
+    description: 'Checks if a binary string is a palindrome. It matches the first and last characters recursively, erasing them as it goes. Returns Y for yes, leaves 0 or garbage for no.',
     initialTape: '1001',
     initialState: 'start',
     rules: [
@@ -56,7 +56,7 @@ export const PRESETS: Preset[] = [
   },
   {
     name: 'Ping Pong',
-    description: 'Moves back and forth between two 1s forever.',
+    description: 'An infinite loop demonstration. The head bounces back and forth between two "1" boundaries, never halting.',
     initialTape: '1_0_0_0_1',
     initialState: 'right',
     rules: [
@@ -70,11 +70,10 @@ export const PRESETS: Preset[] = [
   },
   {
     name: 'Unary Addition',
-    description: 'Adds two unary numbers separated by "+". Example: 11+11 -> 1111',
-    initialTape: '11+111',
+    description: 'Performs 3+2=5 in unary. Converts the "+" separator into a "1", then removes one "1" from the end to correct the count.',
+    initialTape: '111+11',
     initialState: 'start',
     rules: [
-      // Strategy: Change '+' to '1', then remove one '1' from the end to balance the count.
       { currentState: 'start', readSymbol: '1', writeSymbol: '1', moveDirection: 'R', nextState: 'start' },
       { currentState: 'start', readSymbol: '+', writeSymbol: '1', moveDirection: 'R', nextState: 'go_end' },
       
@@ -86,34 +85,31 @@ export const PRESETS: Preset[] = [
   },
   {
     name: 'Unary Subtraction',
-    description: 'Subtracts second number from first. Example: 111-11 -> 1',
+    description: 'Performs 3-2=1 in unary. Matches 1s from the right side (subtrahend) with 1s from the left side (minuend) until the right side is empty.',
     initialTape: '111-11',
     initialState: 'start',
     rules: [
-      // Strategy: Ping pong between right side (subtractor) and left side (minuend), crossing out pairs.
-      
       // 1. Move Right to find the operator or verify we are done
       { currentState: 'start', readSymbol: '1', writeSymbol: '1', moveDirection: 'R', nextState: 'start' },
       { currentState: 'start', readSymbol: '-', writeSymbol: '-', moveDirection: 'R', nextState: 'find_b' },
-      { currentState: 'start', readSymbol: '_', writeSymbol: '_', moveDirection: 'N', nextState: 'done' }, // If empty
+      { currentState: 'start', readSymbol: '_', writeSymbol: '_', moveDirection: 'N', nextState: 'done' },
 
       // 2. In section B (right side), find the end
       { currentState: 'find_b', readSymbol: '1', writeSymbol: '1', moveDirection: 'R', nextState: 'find_b' },
       { currentState: 'find_b', readSymbol: '_', writeSymbol: '_', moveDirection: 'L', nextState: 'erase_b' },
-      { currentState: 'find_b', readSymbol: 'X', writeSymbol: 'X', moveDirection: 'L', nextState: 'erase_b' },
 
       // 3. Erase one '1' from B
       { currentState: 'erase_b', readSymbol: '1', writeSymbol: '_', moveDirection: 'L', nextState: 'find_a_tail' },
-      { currentState: 'erase_b', readSymbol: '-', writeSymbol: '_', moveDirection: 'N', nextState: 'done' }, // B is empty, remove minus and we are DONE.
+      { currentState: 'erase_b', readSymbol: '-', writeSymbol: '_', moveDirection: 'N', nextState: 'done' }, // B is empty, remove minus -> DONE
 
       // 4. Go back left to find tail of A
       { currentState: 'find_a_tail', readSymbol: '1', writeSymbol: '1', moveDirection: 'L', nextState: 'find_a_tail' },
       { currentState: 'find_a_tail', readSymbol: '-', writeSymbol: '-', moveDirection: 'L', nextState: 'erase_a' },
-      { currentState: 'find_a_tail', readSymbol: '_', writeSymbol: '_', moveDirection: 'L', nextState: 'find_a_tail' }, // Skipping gaps
+      { currentState: 'find_a_tail', readSymbol: '_', writeSymbol: '_', moveDirection: 'L', nextState: 'find_a_tail' }, 
 
       // 5. Erase one '1' from A
-      { currentState: 'erase_a', readSymbol: '1', writeSymbol: '_', moveDirection: 'R', nextState: 'reset_start' }, // Erased match, restart
-      { currentState: 'erase_a', readSymbol: '_', writeSymbol: '_', moveDirection: 'L', nextState: 'erase_a' }, // Skip gaps
+      { currentState: 'erase_a', readSymbol: '1', writeSymbol: '_', moveDirection: 'R', nextState: 'reset_start' }, 
+      { currentState: 'erase_a', readSymbol: '_', writeSymbol: '_', moveDirection: 'L', nextState: 'erase_a' },
       
       // 6. Reset to start scanning again
       { currentState: 'reset_start', readSymbol: '_', writeSymbol: '_', moveDirection: 'R', nextState: 'reset_start' },
